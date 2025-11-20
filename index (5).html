@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>물체 충격량 시뮬레이션 (범위 제한 적용)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; user-select: none; }
+        .direction-button.selected { background-color: #3b82f6; color: white; }
+        .object-element.selected { outline: 3px solid #facc15; outline-offset: 2px; }
+        .object-element {
+            width: 50px; height: 50px; border-radius: 0.375rem;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 600; color: white; position: absolute;
+            bottom: 10px; cursor: grab; 
+        }
+        .object-element:active { cursor: grabbing; }
+        #message-box {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            background-color: #ef4444; color: white; padding: 10px 20px;
+            border-radius: 0.375rem; z-index: 100; display: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        #close-properties-btn {
+            position: absolute; top: 0.5rem; right: 0.5rem; background: none;
+            border: none; font-size: 1.5rem; line-height: 1; color: #9ca3af; cursor: pointer;
+        }
+        #close-properties-btn:hover { color: #374151; }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 lg:p-8 flex flex-col h-screen">
+
+    <div class="flex flex-wrap gap-2 mb-4">
+        <button id="create-object-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md shadow">🔲 물체 생성</button>
+        <button id="delete-object-btn" class="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-md shadow" disabled>🗑️ 물체 삭제</button>
+    </div>
+
+    <div class="flex flex-grow gap-4 flex-col lg:flex-row overflow-hidden">
+        <div class="flex-grow lg:w-2/3 bg-white rounded-lg shadow p-4 flex flex-col relative overflow-hidden">
+            <h2 class="text-lg font-semibold mb-2 text-gray-700">시뮬레이션 영역</h2>
+            <div id="simulation-canvas" class="flex-grow border border-gray-300 rounded-md relative bg-gray-50 overflow-x-auto overflow-y-hidden">
+                <div class="absolute bottom-0 left-0 w-full h-2 bg-gray-400"></div> </div>
+            <div class="mt-4 flex items-center justify-center gap-4">
+                <button id="start-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow">▶️ 시작</button>
+                <button id="pause-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-full shadow" disabled>⏯ 멈춤</button>
+                <div class="text-gray-700">시간: <span id="simulation-time">0.00</span> s</div>
+            </div>
+        </div>
+
+        <div class="lg:w-1/3 flex flex-col gap-4">
+            <div id="properties-panel" class="bg-white rounded-lg shadow p-4 h-auto lg:h-1/2 hidden relative">
+                 <button id="close-properties-btn" title="닫기">&times;</button>
+                <h2 class="text-lg font-semibold mb-3 text-gray-700">물체 <span id="selected-object-name" class="font-bold"></span> 속성</h2>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">방향:</label>
+                        <div class="flex gap-2">
+                            <button id="direction-left" data-direction="-1" class="direction-button flex-1 border border-gray-300 py-1 px-3 rounded-md text-gray-700 hover:bg-gray-100">← 왼쪽</button>
+                            <button id="direction-right" data-direction="1" class="direction-button flex-1 border border-gray-300 py-1 px-3 rounded-md text-gray-700 hover:bg-gray-100">→ 오른쪽</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="velocity-input" class="block text-sm font-medium text-gray-600 mb-1">속력 (m/s): <span class="text-xs text-gray-400">(0 ~ 50)</span></label>
+                        <input type="number" id="velocity-input" min="0" max="50" step="0.1" class="w-full border border-gray-300 rounded-md p-1.5 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="예: 5.00"> </div>
+                    <div>
+                        <label for="mass-input" class="block text-sm font-medium text-gray-600 mb-1">질량 (kg): <span class="text-xs text-gray-400">(1 ~ 100)</span></label>
+                        <input type="number" id="mass-input" min="1" max="100" step="0.1" class="w-full border border-gray-300 rounded-md p-1.5 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="예: 10.0">
+                    </div>
+                </div>
+            </div>
+             <div class="bg-white rounded-lg shadow p-4 flex-grow overflow-auto">
+                <h2 class="text-lg font-semibold mb-2 text-gray-700">📊 결과값 (실시간)</h2>
+                <div class="mb-2 text-sm text-gray-600">총 운동량 (충돌 전): <span id="total-momentum-before" class="font-medium">0.00</span> kg·m/s</div>
+                <div class="mb-3 text-sm text-gray-600">총 운동량 (충돌 후): <span id="total-momentum-after" class="font-medium">0.00</span> kg·m/s</div>
+                <div class="overflow-x-auto">
+                    <table id="results-table" class="w-full text-sm text-left text-gray-600">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                            <tr>
+                                <th scope="col" class="px-4 py-2">물체</th>
+                                <th scope="col" class="px-4 py-2">질량 (kg)</th>
+                                <th scope="col" class="px-4 py-2">속도 (m/s)</th>
+                                <th scope="col" class="px-4 py-2">운동량</th>
+                                <th scope="col" class="px-4 py-2">충격량 (Δp)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="message-box">메시지 내용</div>
+
+    <script>
+        // --- DOM 요소 ---
+        const createObjectBtn = document.getElementById('create-object-btn');
+        const deleteObjectBtn = document.getElementById('delete-object-btn');
+        const simulationCanvas = document.getElementById('simulation-canvas');
+        const propertiesPanel = document.getElementById('properties-panel');
+        const closePropertiesBtn = document.getElementById('close-properties-btn');
+        const selectedObjectName = document.getElementById('selected-object-name');
+        const directionLeftBtn = document.getElementById('direction-left');
+        const directionRightBtn = document.getElementById('direction-right');
+        const velocityInput = document.getElementById('velocity-input');
+        const massInput = document.getElementById('mass-input');
+        const startBtn = document.getElementById('start-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+        const simulationTimeDisplay = document.getElementById('simulation-time');
+        const resultsTableBody = document.querySelector('#results-table tbody');
+        const totalMomentumBeforeDisplay = document.getElementById('total-momentum-before');
+        const totalMomentumAfterDisplay = document.getElementById('total-momentum-after');
+        const messageBox = document.getElementById('message-box');
+
+        // --- 상태 변수 ---
+        let objects = [];
+        let selectedObjects = [];
+        let nextObjectId = 0;
+        let simulationRunning = false;
+        let animationFrameId = null;
+        let lastTimestamp = 0;
+        let simulationTime = 0;
+        
+        // 물리 엔진 상수
+        const pixelsPerMeter = 50; 
+        const objectWidthPixels = 50; 
+        const canvasPadding = 10;
+        const subSteps = 8; // 물리 정확도 향상을 위한 서브 스테핑
+
+        // 드래그 변수
+        let isDragging = false;
+        let draggedObject = null;
+        let dragStartX = 0;
+        let objectStartX = 0;
+
+        function showMessage(message, duration = 3000) {
+            messageBox.textContent = message;
+            messageBox.style.display = 'block';
+            messageBox.style.backgroundColor = '#34d399'; // 성공 색상
+            // 오류나 경고 메시지일 경우 빨간색
+            if (message.includes('오류') || message.includes('불가') || message.includes('제한') || message.includes('범위')) {
+                 messageBox.style.backgroundColor = '#f87171'; 
+            }
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, duration);
+        }
+
+        // --- 물체 생성 및 관리 ---
+        function createObject() {
+            if (objects.length >= 5) {
+                showMessage("더 이상 물체를 생성할 수 없습니다.");
+                return;
+            }
+            if (simulationRunning) return;
+
+            const objectId = nextObjectId++;
+            const objectName = String.fromCharCode(65 + objectId); 
+            const objectElement = document.createElement('div');
+            objectElement.id = `object-${objectId}`;
+            objectElement.className = 'object-element bg-blue-500';
+            objectElement.textContent = objectName;
+            objectElement.dataset.id = objectId;
+
+            let initialX = canvasPadding;
+            if (objects.length > 0) {
+                const lastObj = objects[objects.length - 1];
+                initialX = lastObj.x + objectWidthPixels + 20;
+            }
+
+            const newObject = {
+                id: objectId,
+                name: objectName,
+                element: objectElement,
+                x: initialX,
+                y: 0,
+                vx: 0,
+                mass: 1,
+                initialVx: 0,
+                initialMass: 1,
+                impulse: 0,
+                direction: 1,
+            };
+
+            objectElement.style.transform = `translateX(${newObject.x}px)`;
+            objectElement.addEventListener('click', handleObjectClick);
+            objectElement.addEventListener('mousedown', handleDragStart);
+
+            objects.push(newObject);
+            simulationCanvas.appendChild(objectElement);
+            updateResultsTable();
+            showMessage(`${objectName} 물체 생성됨`);
+        }
+
+        function deleteObject() {
+            if (selectedObjects.length !== 1 || simulationRunning) return;
+            const objectIdToDelete = selectedObjects[0];
+            const objectIndex = objects.findIndex(obj => obj.id === objectIdToDelete);
+            if (objectIndex > -1) {
+                objects[objectIndex].element.remove();
+                objects.splice(objectIndex, 1);
+                deselectAllObjects();
+                propertiesPanel.classList.add('hidden');
+                updateResultsTable();
+            }
+            selectedObjects = [];
+            updateButtonStates();
+        }
+
+        function handleObjectClick(event) {
+            if (isDragging || simulationRunning) return;
+            const clickedId = parseInt(event.target.dataset.id);
+
+            if (selectedObjects.includes(clickedId)) {
+                deselectAllObjects();
+                selectedObjects = [];
+                propertiesPanel.classList.add('hidden');
+            } else {
+                deselectAllObjects();
+                selectedObjects = [clickedId];
+                objects.find(obj => obj.id === clickedId)?.element.classList.add('selected');
+                displayObjectProperties(objects.find(obj => obj.id === clickedId));
+                propertiesPanel.classList.remove('hidden');
+            }
+            updateButtonStates();
+        }
+
+        function deselectAllObjects() {
+            objects.forEach(obj => obj.element.classList.remove('selected'));
+        }
+
+        function displayObjectProperties(obj) {
+            selectedObjectName.textContent = obj.name;
+            velocityInput.value = Math.abs(obj.vx).toFixed(2);
+            massInput.value = obj.mass;
+            updateDirectionButtons(obj.direction);
+        }
+
+        function updateDirectionButtons(direction) {
+            if (direction === -1) {
+                directionLeftBtn.classList.add('selected');
+                directionRightBtn.classList.remove('selected');
+            } else {
+                directionRightBtn.classList.add('selected');
+                directionLeftBtn.classList.remove('selected');
+            }
+        }
+
+        // [수정됨] 값 변경 시 유효성 검사 (범위 제한)
+        function handlePropertyChange() {
+            if (selectedObjects.length !== 1 || simulationRunning) return;
+            const obj = objects.find(o => o.id === selectedObjects[0]);
+            if (!obj) return;
+
+            const newMass = parseFloat(massInput.value);
+            const newSpeed = parseFloat(velocityInput.value);
+
+            // 질량 검증 (1 ~ 100)
+            if (isNaN(newMass) || newMass < 1 || newMass > 100) {
+                showMessage("질량은 최소 1kg에서 최대 100kg 사이여야 합니다.");
+                massInput.value = obj.mass; // 이전 값으로 복구
+                return; // 변경 중단
+            } else {
+                obj.mass = newMass;
+                obj.initialMass = newMass;
+            }
+
+            // 속력 검증 (0 ~ 50)
+            if (isNaN(newSpeed) || newSpeed < 0 || newSpeed > 50) {
+                showMessage("속력은 0m/s에서 최대 50m/s 사이여야 합니다.");
+                velocityInput.value = Math.abs(obj.vx).toFixed(2); // 이전 값으로 복구
+                return; // 변경 중단
+            } else {
+                obj.vx = newSpeed * obj.direction;
+                obj.initialVx = obj.vx;
+            }
+
+            updateResultsTable();
+        }
+
+        function handleDirectionChange(event) {
+            if (selectedObjects.length !== 1 || simulationRunning) return;
+            const obj = objects.find(o => o.id === selectedObjects[0]);
+            if (!obj) return;
+
+            const newDir = parseInt(event.target.dataset.direction);
+            obj.direction = newDir;
+            obj.vx = Math.abs(obj.vx) * newDir;
+            obj.initialVx = obj.vx;
+            updateDirectionButtons(newDir);
+            updateResultsTable();
+        }
+
+        function closePropertiesPanel() {
+            propertiesPanel.classList.add('hidden');
+            deselectAllObjects();
+            selectedObjects = [];
+            updateButtonStates();
+        }
+
+        // --- 드래그 ---
+        function handleDragStart(event) {
+            if (event.button !== 0 || simulationRunning) return;
+            const targetId = parseInt(event.target.dataset.id);
+            draggedObject = objects.find(obj => obj.id === targetId);
+            if (!draggedObject) return;
+
+            isDragging = true;
+            dragStartX = event.clientX;
+            objectStartX = draggedObject.x;
+            draggedObject.element.style.zIndex = 10;
+
+            document.addEventListener('mousemove', handleDragging);
+            document.addEventListener('mouseup', handleDragEnd);
+        }
+
+        function handleDragging(event) {
+            if (!isDragging || !draggedObject) return;
+            const deltaX = event.clientX - dragStartX;
+            let newX = objectStartX + deltaX;
+            const maxW = simulationCanvas.clientWidth;
+            newX = Math.max(canvasPadding, Math.min(newX, maxW - canvasPadding - objectWidthPixels));
+            draggedObject.x = newX;
+            draggedObject.element.style.transform = `translateX(${newX}px)`;
+        }
+
+        function handleDragEnd() {
+            if (!isDragging) return;
+            isDragging = false;
+            draggedObject.element.style.zIndex = '';
+            draggedObject = null;
+            document.removeEventListener('mousemove', handleDragging);
+            document.removeEventListener('mouseup', handleDragEnd);
+        }
+
+        // --- 시뮬레이션 로직 (터널링 방지 유지) ---
+        function startSimulation() {
+            if (simulationRunning) return;
+            simulationRunning = true;
+            startBtn.disabled = true;
+            pauseBtn.disabled = false;
+            createObjectBtn.disabled = true;
+            deleteObjectBtn.disabled = true;
+            velocityInput.disabled = true;
+            massInput.disabled = true;
+            
+            objects.forEach(obj => {
+                obj.impulse = 0;
+                obj.initialVx = obj.vx; 
+            });
+
+            lastTimestamp = performance.now();
+            animationFrameId = requestAnimationFrame(simulationLoop);
+        }
+
+        function pauseSimulation() {
+            if (!simulationRunning) return;
+            simulationRunning = false;
+            cancelAnimationFrame(animationFrameId);
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+            createObjectBtn.disabled = false;
+            velocityInput.disabled = false;
+            massInput.disabled = false;
+            updateButtonStates();
+        }
+
+        function simulationLoop(timestamp) {
+            if (!simulationRunning) return;
+
+            const deltaTime = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+            const safeDeltaTime = Math.min(deltaTime, 0.05); 
+
+            simulationTime += safeDeltaTime;
+            simulationTimeDisplay.textContent = simulationTime.toFixed(2);
+
+            const canvasWidth = simulationCanvas.clientWidth;
+            const rightBoundary = canvasWidth - canvasPadding - objectWidthPixels;
+
+            const dt = safeDeltaTime / subSteps;
+            
+            for (let step = 0; step < subSteps; step++) {
+                // 1. 위치 업데이트
+                objects.forEach(obj => {
+                    obj.x += obj.vx * pixelsPerMeter * dt;
+                });
+
+                // 2. 벽 충돌 처리
+                objects.forEach(obj => {
+                    if (obj.x < canvasPadding) {
+                        obj.x = canvasPadding;
+                        if (obj.vx < 0) {
+                            const v_prev = obj.vx;
+                            obj.vx *= -1;
+                            obj.direction = Math.sign(obj.vx);
+                            obj.impulse += Math.abs(obj.mass * (obj.vx - v_prev));
+                        }
+                    } else if (obj.x > rightBoundary) {
+                        obj.x = rightBoundary;
+                        if (obj.vx > 0) {
+                            const v_prev = obj.vx;
+                            obj.vx *= -1;
+                            obj.direction = Math.sign(obj.vx);
+                            obj.impulse += Math.abs(obj.mass * (obj.vx - v_prev));
+                        }
+                    }
+                });
+
+                // 3. 물체 간 충돌 처리 (질량 기반 위치 보정 포함)
+                for (let i = 0; i < objects.length; i++) {
+                    for (let j = i + 1; j < objects.length; j++) {
+                        const obj1 = objects[i];
+                        const obj2 = objects[j];
+
+                        if (obj1.x + objectWidthPixels > obj2.x && obj1.x < obj2.x + objectWidthPixels) {
+                            
+                            const overlap = (Math.min(obj1.x + objectWidthPixels, obj2.x + objectWidthPixels) 
+                                            - Math.max(obj1.x, obj2.x));
+                            
+                            const totalMass = obj1.mass + obj2.mass;
+                            const m1Ratio = obj2.mass / totalMass; 
+                            const m2Ratio = obj1.mass / totalMass;
+
+                            if (obj1.x < obj2.x) {
+                                obj1.x -= overlap * m1Ratio;
+                                obj2.x += overlap * m2Ratio;
+                            } else {
+                                obj1.x += overlap * m1Ratio;
+                                obj2.x -= overlap * m2Ratio;
+                            }
+
+                            const v1 = obj1.vx;
+                            const v2 = obj2.vx;
+                            const m1 = obj1.mass;
+                            const m2 = obj2.mass;
+
+                            if ((v1 - v2) * (obj1.x - obj2.x) < 0) {
+                                const newV1 = ((m1 - m2) * v1 + 2 * m2 * v2) / (m1 + m2);
+                                const newV2 = ((m2 - m1) * v2 + 2 * m1 * v1) / (m1 + m2);
+
+                                obj1.vx = newV1;
+                                obj2.vx = newV2;
+                                obj1.direction = Math.sign(newV1) || 1;
+                                obj2.direction = Math.sign(newV2) || 1;
+
+                                const deltaP = Math.abs(m1 * (newV1 - v1));
+                                obj1.impulse += deltaP;
+                                obj2.impulse += deltaP;
+                            }
+                        }
+                    }
+                }
+            } 
+
+            objects.forEach(obj => {
+                obj.element.style.transform = `translateX(${obj.x}px)`;
+            });
+            
+            updateResultsTable();
+            animationFrameId = requestAnimationFrame(simulationLoop);
+        }
+
+        function updateResultsTable() {
+            resultsTableBody.innerHTML = '';
+            let totalPBefore = 0;
+            let totalPAfter = 0;
+
+            objects.forEach(obj => {
+                const pInitial = obj.initialMass * obj.initialVx;
+                const pCurrent = obj.mass * obj.vx;
+                totalPBefore += pInitial;
+                totalPAfter += pCurrent;
+
+                const row = `
+                    <tr class="bg-white border-b hover:bg-gray-50">
+                        <td class="px-4 py-2 font-medium text-gray-900">${obj.name}</td>
+                        <td class="px-4 py-2">${obj.mass.toFixed(1)}</td>
+                        <td class="px-4 py-2">${obj.vx.toFixed(2)}</td>
+                        <td class="px-4 py-2">${pCurrent.toFixed(2)}</td>
+                        <td class="px-4 py-2 text-blue-600 font-bold">${obj.impulse.toFixed(2)}</td>
+                    </tr>
+                `;
+                resultsTableBody.innerHTML += row;
+            });
+
+            totalMomentumBeforeDisplay.textContent = totalPBefore.toFixed(2);
+            totalMomentumAfterDisplay.textContent = totalPAfter.toFixed(2);
+        }
+
+        function updateButtonStates() {
+            deleteObjectBtn.disabled = selectedObjects.length !== 1 || simulationRunning;
+        }
+
+        // --- 초기화 및 이벤트 ---
+        createObjectBtn.addEventListener('click', createObject);
+        deleteObjectBtn.addEventListener('click', deleteObject);
+        startBtn.addEventListener('click', startSimulation);
+        pauseBtn.addEventListener('click', pauseSimulation);
+        closePropertiesBtn.addEventListener('click', closePropertiesPanel);
+        velocityInput.addEventListener('change', handlePropertyChange);
+        massInput.addEventListener('change', handlePropertyChange);
+        directionLeftBtn.addEventListener('click', handleDirectionChange);
+        directionRightBtn.addEventListener('click', handleDirectionChange);
+
+        // 테스트용 초기 생성
+        setTimeout(() => {
+            createObject(); 
+            setTimeout(() => {
+                createObject();
+                objects[1].x = 300;
+                objects[1].element.style.transform = `translateX(300px)`;
+                updateResultsTable();
+            }, 50);
+        }, 100);
+    </script>
+</body>
+</html>
