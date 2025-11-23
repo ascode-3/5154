@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>물체 충격량 시뮬레이션 (범위 제한 적용)</title>
+    <title>물체 충격량 시뮬레이션 (미션 모드)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -17,6 +17,28 @@
             bottom: 10px; cursor: grab; 
         }
         .object-element:active { cursor: grabbing; }
+        
+        /* 모달 스타일 */
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.5);
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 50; display: none;
+        }
+        .modal-overlay.show { display: flex; }
+        
+        /* 미션 완료 텍스트 스타일 */
+        .mission-item.completed span {
+            text-decoration: line-through;
+            color: #10b981; /* green-500 */
+        }
+        .mission-item.completed::before {
+            content: '✅ ';
+        }
+        .mission-item::before {
+            content: '⬜ ';
+        }
+
         #message-box {
             position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
             background-color: #ef4444; color: white; padding: 10px 20px;
@@ -32,9 +54,12 @@
 </head>
 <body class="bg-gray-100 p-4 lg:p-8 flex flex-col h-screen">
 
-    <div class="flex flex-wrap gap-2 mb-4">
+    <div class="flex flex-wrap gap-2 mb-4 items-center">
         <button id="create-object-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md shadow">🔲 물체 생성</button>
         <button id="delete-object-btn" class="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-md shadow" disabled>🗑️ 물체 삭제</button>
+        <button id="show-mission-btn" class="ml-auto bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-md shadow flex items-center gap-2">
+            📜 미션 보기 <span id="mission-count-badge" class="bg-white text-purple-600 text-xs font-bold px-2 py-0.5 rounded-full">0/3</span>
+        </button>
     </div>
 
     <div class="flex flex-grow gap-4 flex-col lg:flex-row overflow-hidden">
@@ -62,11 +87,11 @@
                         </div>
                     </div>
                     <div>
-                        <label for="velocity-input" class="block text-sm font-medium text-gray-600 mb-1">속력 (m/s): <span class="text-xs text-gray-400">(0 ~ 50)</span></label>
-                        <input type="number" id="velocity-input" min="0" max="50" step="0.1" class="w-full border border-gray-300 rounded-md p-1.5 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="예: 5.00"> </div>
+                        <label for="velocity-input" class="block text-sm font-medium text-gray-600 mb-1">속력 (m/s): <span class="text-xs text-gray-400">(0 ~ 10)</span></label>
+                        <input type="number" id="velocity-input" min="0" max="10" step="0.1" class="w-full border border-gray-300 rounded-md p-1.5 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="예: 5.00"> </div>
                     <div>
-                        <label for="mass-input" class="block text-sm font-medium text-gray-600 mb-1">질량 (kg): <span class="text-xs text-gray-400">(1 ~ 100)</span></label>
-                        <input type="number" id="mass-input" min="1" max="100" step="0.1" class="w-full border border-gray-300 rounded-md p-1.5 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="예: 10.0">
+                        <label for="mass-input" class="block text-sm font-medium text-gray-600 mb-1">질량 (kg): <span class="text-xs text-gray-400">(1 ~ 10)</span></label>
+                        <input type="number" id="mass-input" min="1" max="10" step="0.1" class="w-full border border-gray-300 rounded-md p-1.5 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="예: 10.0">
                     </div>
                 </div>
             </div>
@@ -93,6 +118,40 @@
         </div>
     </div>
 
+    <div id="mission-modal" class="modal-overlay">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-96 max-w-full transform transition-all scale-100">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">미션 목록</h3>
+                <button id="close-mission-btn" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
+            </div>
+            <ul class="space-y-3 text-gray-700 font-medium">
+                <li id="mission-1" class="mission-item p-2 rounded hover:bg-gray-50">
+                    <span>질량 10kg 물체 누적 충격량 2000 넘기</span>
+                </li>
+                <li id="mission-2" class="mission-item p-2 rounded hover:bg-gray-50">
+                    <span>질량 1kg 물체 운동량 30 넘기</span>
+                </li>
+                <li id="mission-3" class="mission-item p-2 rounded hover:bg-gray-50">
+                    <span>물체 5개 모두 누적 충격량 1000 넘기</span>
+                </li>
+            </ul>
+            <div class="mt-6 text-sm text-gray-500 text-center">
+                시뮬레이션을 활용해 위 조건을 달성하세요!
+            </div>
+        </div>
+    </div>
+
+    <div id="success-modal" class="modal-overlay">
+        <div class="bg-white rounded-lg shadow-2xl p-8 text-center w-96 animate-bounce-short">
+            <div class="text-6xl mb-4">🏆</div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">미션 성공!</h3>
+            <p class="text-gray-600 mb-6">모든 미션을 클리어하셨습니다.</p>
+            <button id="close-success-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-full shadow transition transform hover:scale-105">
+                확인
+            </button>
+        </div>
+    </div>
+
     <div id="message-box">메시지 내용</div>
 
     <script>
@@ -115,6 +174,19 @@
         const totalMomentumAfterDisplay = document.getElementById('total-momentum-after');
         const messageBox = document.getElementById('message-box');
 
+        // 미션 관련 DOM
+        const showMissionBtn = document.getElementById('show-mission-btn');
+        const missionModal = document.getElementById('mission-modal');
+        const closeMissionBtn = document.getElementById('close-mission-btn');
+        const successModal = document.getElementById('success-modal');
+        const closeSuccessBtn = document.getElementById('close-success-btn');
+        const missionCountBadge = document.getElementById('mission-count-badge');
+        const missionEls = [
+            document.getElementById('mission-1'),
+            document.getElementById('mission-2'),
+            document.getElementById('mission-3')
+        ];
+
         // --- 상태 변수 ---
         let objects = [];
         let selectedObjects = [];
@@ -128,7 +200,7 @@
         const pixelsPerMeter = 50; 
         const objectWidthPixels = 50; 
         const canvasPadding = 10;
-        const subSteps = 8; // 물리 정확도 향상을 위한 서브 스테핑
+        const subSteps = 8; 
 
         // 드래그 변수
         let isDragging = false;
@@ -136,17 +208,84 @@
         let dragStartX = 0;
         let objectStartX = 0;
 
+        // 미션 상태
+        let missionStatus = [false, false, false];
+        let allMissionsCleared = false;
+
         function showMessage(message, duration = 3000) {
             messageBox.textContent = message;
             messageBox.style.display = 'block';
-            messageBox.style.backgroundColor = '#34d399'; // 성공 색상
-            // 오류나 경고 메시지일 경우 빨간색
+            messageBox.style.backgroundColor = '#34d399'; 
             if (message.includes('오류') || message.includes('불가') || message.includes('제한') || message.includes('범위')) {
                  messageBox.style.backgroundColor = '#f87171'; 
             }
             setTimeout(() => {
                 messageBox.style.display = 'none';
             }, duration);
+        }
+
+        // --- 미션 시스템 함수 ---
+        function toggleMissionModal() {
+            if (missionModal.classList.contains('show')) {
+                missionModal.classList.remove('show');
+            } else {
+                missionModal.classList.add('show');
+            }
+        }
+
+        function updateMissionUI() {
+            let completedCount = 0;
+            missionStatus.forEach((completed, index) => {
+                if (completed) {
+                    missionEls[index].classList.add('completed');
+                    completedCount++;
+                }
+            });
+            missionCountBadge.textContent = `${completedCount}/3`;
+        }
+
+        function checkMissionCompletion() {
+            if (allMissionsCleared) return; // 이미 다 깼으면 패스
+
+            // 미션 1: 질량 10kg 물체 누적 충격량 2000 넘기
+            if (!missionStatus[0]) {
+                const passed = objects.some(obj => obj.mass === 10 && obj.impulse > 2000);
+                if (passed) {
+                    missionStatus[0] = true;
+                    showMessage("미션 1 달성! (질량 10kg, 충격량 2000 돌파)");
+                }
+            }
+
+            // 미션 2: 질량 1kg 물체 운동량 30 넘기 (운동량 = mass * abs(velocity))
+            if (!missionStatus[1]) {
+                const passed = objects.some(obj => obj.mass === 1 && (obj.mass * Math.abs(obj.vx)) > 30);
+                if (passed) {
+                    missionStatus[1] = true;
+                    showMessage("미션 2 달성! (질량 1kg, 운동량 30 돌파)");
+                }
+            }
+
+            // 미션 3: 물체 5개 생성해서 모두 누적 충격량 1000 넘기
+            if (!missionStatus[2]) {
+                if (objects.length === 5) {
+                    const allPassed = objects.every(obj => obj.impulse > 1000);
+                    if (allPassed) {
+                        missionStatus[2] = true;
+                        showMessage("미션 3 달성! (5개 물체 모두 충격량 1000 돌파)");
+                    }
+                }
+            }
+
+            updateMissionUI();
+
+            // 전체 클리어 체크
+            if (!allMissionsCleared && missionStatus.every(Boolean)) {
+                allMissionsCleared = true;
+                setTimeout(() => {
+                    successModal.classList.add('show');
+                    // 폭죽 효과 등을 줄 수 있지만 간단하게 모달로 처리
+                }, 500);
+            }
         }
 
         // --- 물체 생성 및 관리 ---
@@ -193,6 +332,9 @@
             simulationCanvas.appendChild(objectElement);
             updateResultsTable();
             showMessage(`${objectName} 물체 생성됨`);
+            
+            // 생성 시에도 미션 체크 (조건 만족할 수도 있으므로)
+            checkMissionCompletion();
         }
 
         function deleteObject() {
@@ -208,6 +350,7 @@
             }
             selectedObjects = [];
             updateButtonStates();
+            checkMissionCompletion();
         }
 
         function handleObjectClick(event) {
@@ -249,7 +392,6 @@
             }
         }
 
-        // [수정됨] 값 변경 시 유효성 검사 (범위 제한)
         function handlePropertyChange() {
             if (selectedObjects.length !== 1 || simulationRunning) return;
             const obj = objects.find(o => o.id === selectedObjects[0]);
@@ -258,27 +400,26 @@
             const newMass = parseFloat(massInput.value);
             const newSpeed = parseFloat(velocityInput.value);
 
-            // 질량 검증 (1 ~ 100)
-            if (isNaN(newMass) || newMass < 1 || newMass > 100) {
-                showMessage("질량은 최소 1kg에서 최대 100kg 사이여야 합니다.");
-                massInput.value = obj.mass; // 이전 값으로 복구
-                return; // 변경 중단
+            if (isNaN(newMass) || newMass < 1 || newMass > 10) {
+                showMessage("질량은 최소 1kg에서 최대 10kg 사이여야 합니다.");
+                massInput.value = obj.mass; 
+                return; 
             } else {
                 obj.mass = newMass;
                 obj.initialMass = newMass;
             }
 
-            // 속력 검증 (0 ~ 50)
-            if (isNaN(newSpeed) || newSpeed < 0 || newSpeed > 50) {
-                showMessage("속력은 0m/s에서 최대 50m/s 사이여야 합니다.");
-                velocityInput.value = Math.abs(obj.vx).toFixed(2); // 이전 값으로 복구
-                return; // 변경 중단
+            if (isNaN(newSpeed) || newSpeed < 0 || newSpeed > 10) {
+                showMessage("속력은 0m/s에서 최대 10m/s 사이여야 합니다.");
+                velocityInput.value = Math.abs(obj.vx).toFixed(2); 
+                return; 
             } else {
                 obj.vx = newSpeed * obj.direction;
                 obj.initialVx = obj.vx;
             }
 
             updateResultsTable();
+            checkMissionCompletion(); // 속성 변경 후 즉시 체크 (특히 운동량 미션)
         }
 
         function handleDirectionChange(event) {
@@ -336,7 +477,7 @@
             document.removeEventListener('mouseup', handleDragEnd);
         }
 
-        // --- 시뮬레이션 로직 (터널링 방지 유지) ---
+        // --- 시뮬레이션 로직 ---
         function startSimulation() {
             if (simulationRunning) return;
             simulationRunning = true;
@@ -347,9 +488,17 @@
             velocityInput.disabled = true;
             massInput.disabled = true;
             
+            // 주의: 미션 3 달성을 위해 충격량을 시뮬레이션 재시작 시 초기화할지 결정해야 함
+            // 여기서는 사용자가 누적해서 깨는 재미를 위해 초기화하지 않음 (원하면 아래 주석 해제)
+            /*
             objects.forEach(obj => {
                 obj.impulse = 0;
                 obj.initialVx = obj.vx; 
+            });
+            */
+            // 대신 초기 속도만 동기화
+            objects.forEach(obj => {
+                 obj.initialVx = obj.vx; 
             });
 
             lastTimestamp = performance.now();
@@ -410,7 +559,7 @@
                     }
                 });
 
-                // 3. 물체 간 충돌 처리 (질량 기반 위치 보정 포함)
+                // 3. 물체 간 충돌 처리
                 for (let i = 0; i < objects.length; i++) {
                     for (let j = i + 1; j < objects.length; j++) {
                         const obj1 = objects[i];
@@ -461,6 +610,10 @@
             });
             
             updateResultsTable();
+            
+            // [중요] 시뮬레이션 루프 내에서 미션 달성 여부 체크
+            checkMissionCompletion();
+
             animationFrameId = requestAnimationFrame(simulationLoop);
         }
 
@@ -475,13 +628,20 @@
                 totalPBefore += pInitial;
                 totalPAfter += pCurrent;
 
+                // 미션 관련 하이라이트 (조건 달성 시 텍스트 굵게 표시 등 시각적 피드백)
+                const isMission1Cand = (obj.mass === 10 && obj.impulse > 2000);
+                const isMission2Cand = (obj.mass === 1 && Math.abs(pCurrent) > 30);
+                
+                let rowClass = "bg-white border-b hover:bg-gray-50";
+                if (isMission1Cand || isMission2Cand) rowClass = "bg-green-50 border-b hover:bg-green-100";
+
                 const row = `
-                    <tr class="bg-white border-b hover:bg-gray-50">
+                    <tr class="${rowClass}">
                         <td class="px-4 py-2 font-medium text-gray-900">${obj.name}</td>
                         <td class="px-4 py-2">${obj.mass.toFixed(1)}</td>
                         <td class="px-4 py-2">${obj.vx.toFixed(2)}</td>
-                        <td class="px-4 py-2">${pCurrent.toFixed(2)}</td>
-                        <td class="px-4 py-2 text-blue-600 font-bold">${obj.impulse.toFixed(2)}</td>
+                        <td class="px-4 py-2 font-mono ${isMission2Cand ? 'text-green-600 font-bold' : ''}">${pCurrent.toFixed(2)}</td>
+                        <td class="px-4 py-2 text-blue-600 font-mono ${isMission1Cand ? 'text-green-600 font-bold' : ''}">${obj.impulse.toFixed(2)}</td>
                     </tr>
                 `;
                 resultsTableBody.innerHTML += row;
@@ -495,7 +655,7 @@
             deleteObjectBtn.disabled = selectedObjects.length !== 1 || simulationRunning;
         }
 
-        // --- 초기화 및 이벤트 ---
+        // --- 이벤트 리스너 ---
         createObjectBtn.addEventListener('click', createObject);
         deleteObjectBtn.addEventListener('click', deleteObject);
         startBtn.addEventListener('click', startSimulation);
@@ -505,6 +665,13 @@
         massInput.addEventListener('change', handlePropertyChange);
         directionLeftBtn.addEventListener('click', handleDirectionChange);
         directionRightBtn.addEventListener('click', handleDirectionChange);
+
+        // 미션 관련 이벤트
+        showMissionBtn.addEventListener('click', toggleMissionModal);
+        closeMissionBtn.addEventListener('click', toggleMissionModal);
+        closeSuccessBtn.addEventListener('click', () => {
+            successModal.classList.remove('show');
+        });
 
         // 테스트용 초기 생성
         setTimeout(() => {
